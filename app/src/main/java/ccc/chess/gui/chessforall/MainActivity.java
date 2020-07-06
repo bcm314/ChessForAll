@@ -3625,6 +3625,7 @@ public class MainActivity extends Activity implements Ic4aDialogCallback, OnTouc
 
 	public void deleteMoves(boolean deleteMoveIdx)
 	{	// delete moves(History) and updateGui
+
 		gc.cl.deleteMovesFromMoveHistory(deleteMoveIdx);
 		if (gc.cl.p_stat.equals("1"))
 		{
@@ -5316,6 +5317,7 @@ public class MainActivity extends Activity implements Ic4aDialogCallback, OnTouc
 							ec.chessEngineSearching = true;
 							ec.chessEnginePaused = false;
 							updateGui();
+
 							if (!gc.cl.p_fen.equals(""))
 								stopSearchAndContinue(EngineState.STOP_CONTINUE, gc.cl.p_fen);
 						}
@@ -5401,7 +5403,13 @@ public class MainActivity extends Activity implements Ic4aDialogCallback, OnTouc
 				ec.chessEngineAnalysisStat = 0;
 			}
 			boolean isPonder = isGoPonder;
-			ec.getEngine().startSearch(taskFen, taskMoves, wTime, bTime, wInc, bInc, moveTime, movesToGo, ec.chessEngineAnalysis, isPonder, mate);
+
+			if (taskMoves.equals("ponderhit")) { // BCM
+				ec.getEngine().writeLineToProcess("ponderhit");
+			}
+			else
+				ec.getEngine().startSearch(taskFen, taskMoves, wTime, bTime, wInc, bInc, moveTime, movesToGo, ec.chessEngineAnalysis, isPonder, mate);
+
 
 //			Log.i(TAG, "searchTask, doInBackground(), engineState: " + ec.getEngine().engineState);
 
@@ -5516,6 +5524,13 @@ public class MainActivity extends Activity implements Ic4aDialogCallback, OnTouc
 
 					if (isAppEnd)
 						ec.getEngine().shutDown();
+
+					// BCM - save PonderMove
+					PonderMove = "";
+					if (tokens.length >= 3)
+						if (tokens[2].equals("ponder")) {
+							PonderMove = tokens[3];
+						}
 
 					return tokens[1];	//>242	return bestmove
 
@@ -5713,6 +5728,8 @@ public class MainActivity extends Activity implements Ic4aDialogCallback, OnTouc
 
 		protected CharSequence setRandomFirstMove(CharSequence fen)
 		{
+			CharSequence taskMoves; // BCM !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Fix
+
 			taskMoves = "";
 			if (taskFen.equals(gc.standardFen) & userPrefs.getBoolean("user_options_enginePlay_RandomFirstMove", false))
 				taskMoves = ec.getEngine().getRandomFirstMove();
@@ -5798,7 +5815,6 @@ public class MainActivity extends Activity implements Ic4aDialogCallback, OnTouc
 
 			return score;
 		}
-
 		// ENGINE-SearchTask variables
 		int wTime = 100;
 		int bTime = 100;
@@ -6044,13 +6060,14 @@ public class MainActivity extends Activity implements Ic4aDialogCallback, OnTouc
 				&	ec.getEngine().isUciPonder
 				& 	(ec.chessEnginePlayMod == 1 | ec.chessEnginePlayMod == 2)
 				& 	!gc.cl.p_fen.equals("")
+				& 	!PonderMove.equals("") // BCM
 			)
 		{
-
 //			Log.i(TAG, "enginePlayPonder(), fen: " + fen);
 
 			isGoPonder = true;
-			chessEngineBestMove(fen, "");
+			Toast.makeText(this, "PonderMove: " + PonderMove, Toast.LENGTH_LONG).show(); // BCM
+			chessEngineBestMove(fen, PonderMove); // BCM
 			setInfoMessage(getString(R.string.player_move), null, null, false);
 
 		}
@@ -6064,20 +6081,45 @@ public class MainActivity extends Activity implements Ic4aDialogCallback, OnTouc
 
 //			Log.i(TAG, "engineStopPonder(), gc.cl.p_fen: " + fen + ", playMod: " + playMod);
 
-			if 	(		(gc.getValueFromFen(fen, 2).equals("b") & playMod == 1)
-					|	(gc.getValueFromFen(fen, 2).equals("w") & playMod == 2)
-				)
-			{
-				stopSearchAndContinue(EngineState.STOP_CONTINUE, fen);
-			}
-			else
-			{
-				setPauseEnginePlay(false);
-				startChessClock();
-				messageEngineShort  = "";
-				setInfoMessage(getString(R.string.player_move), null, null, false);
-				initPonder();
-			}
+			// BCM - start
+			// Toast.makeText(this, "BCM: finished ponder " + PonderMove, Toast.LENGTH_SHORT).show();
+
+			if (boardView.lastMove.equals(PonderMove)) {
+				Toast.makeText(this, "BCM: ponderhit", Toast.LENGTH_SHORT).show();
+
+				// Change to: waiting for "bestmove"
+				// Some thinkings:
+				// ec.getEngine().writeLineToProcess("ponderhit");
+				// ec.getEngine().engineState = EngineState.SEARCH;
+				// chessEngineSearchTask.execute(...);    //>249 starts the chess engine search task
+				// chessEngineBestMove(...);
+				// ...
+
+				// ec.getEngine().engineState = EngineState.PONDER;
+				isGoPonder = false;
+				searchTaskFen = fen;
+				searchTaskMoves = "ponderhit";
+				chessEngineSearchTask = new ChessEngineSearchTask();
+				chessEngineSearchTask.execute(fen, "ponderhit");    // watch the chess engine search task
+
+			// BCM - end
+			} else {
+
+				if 	(		(gc.getValueFromFen(fen, 2).equals("b") & playMod == 1)
+						|	(gc.getValueFromFen(fen, 2).equals("w") & playMod == 2)
+					)
+				{
+					stopSearchAndContinue(EngineState.STOP_CONTINUE, fen);
+				}
+				else
+				{
+					setPauseEnginePlay(false);
+					startChessClock();
+					messageEngineShort  = "";
+					setInfoMessage(getString(R.string.player_move), null, null, false);
+					initPonder();
+				}
+			}  // BCM
 		}
 	}
 
@@ -7718,4 +7760,5 @@ public class MainActivity extends Activity implements Ic4aDialogCallback, OnTouc
 	//karl --> settings
 	int maxArrows = 6; 		// max display arrows
 
+	CharSequence PonderMove; // BCM - PonderMove declarieren
 }
